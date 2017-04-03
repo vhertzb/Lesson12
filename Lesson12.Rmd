@@ -994,6 +994,267 @@ scale_fill_discrete <-  function(palname=pal, ...){
 
 It is probably not a bad idea to prune OTUs that are not present in any of the samples (somehow that happens) but _don't trim more than that!_ Many richness estimates are modeled on singletons and doubletons, and you need to leave them in the dataset to get meaningful estimates.
 
+```{r}
+
+# Prune off species = 0 across all samples
+
+GP <- prune_taxa(taxa_sums(GlobalPatterns) > 0, GlobalPatterns)
+
+```
+
+### Plot Examples
+
+#### The Default Graphic
+
+The `plot_richness` function produces the default graphic. Let's look at the `GP` example dataset.
+
+```{r}
+
+# Default plot
+
+plot_richness(GP)
+
+```
+
+We can, of course, just select a couple of measures to plot.
+
+```{r}
+
+# Plot only Chao1, Shannon
+
+plot_richness(GP, measures = c("Chao1", "Shannon"))
+
+```
+
+We can also specify a sample variable on which to organize the samples along the x-axis. An experimentally meaningful categorical variable is usually a good choice.
+
+```{r}
+
+# Plot only Chao1, Shannon
+
+plot_richness(GP, x="SampleType", measures = c("Chao1", "Shannon"))
+
+```
+
+Suppose we wanted to organize around an external variable that is not in the dataset already. As an example, think of a variable indicating if the sample was human or not. Let's define that variable first.
+
+```{r}
+
+# Create indicator variable if sample is human or not. 
+
+sample_data(GP)$human <- get_variable(GP, "SampleType") %in% c("Feces", "Mock", "Skin", "Tongue")
+
+```
+
+Now we tell `plot_richness` to map the new human variable on the x-axis, and shaade the points in different color groups accoring to SampleType.
+
+```{r}
+
+# Use indicator for human as x-axis, shade according to sample type
+
+plot_richness(GP, x="human", color="SampleType", measures = c("Chao1", "Shannon"))
+
+```
+
+We can merge samples that are from the environment (SampleType) and make the points bigger with `ggplot2`. First, merge samples.
+
+```{r}
+
+# Merge samples
+
+GPst <- merge_samples(GP, "SampleType")
+
+# Repair variables damaged during merge (coerced to numeric)
+sample_data(GPst)$SampleType <- factor(sample_names(GPst))
+sample_data(GPst)$human <- as.logical(sample_data(GPst)$human)
+
+```
+
+Now to plot
+
+```{r}
+
+p <- plot_richness(GPst, x="human", color="SampleType", measures = c("Chao1", "Shannon"))
+p <- p + geom_point(size=5, alpha=0.7)
+p
+
+```
+
+
+## Tree Graphics
+
+The `phyloseq` package also has powerful graphics for displaying and manipulating phylogenetic trees with the `plot_tree` function.
+
+
+### Example
+
+We want to plot trees, but we notice that the node labels for the GlobalPatterns dataset are, well, strange. Here they are:
+
+```{r}
+# Node labels for phylogenetic tree of GlobalPatterns
+
+head(phy_tree(GlobalPatterns)$node.label, 10)
+```
+
+These might be bootstrap values, but what is with the two decimals?
+
+Let's just take the first 4 characters.
+
+```{r}
+
+# Take first 4 characters of labels
+
+phy_tree(GlobalPatterns)$node.label <- substr(phy_tree(GlobalPatterns)$node.label, 1, 4)
+head(phy_tree(GlobalPatterns)$node.label)
+
+```
+
+Much better, these look like bootstrap values now.
+
+The dataset has many OTUs, more than will fit nicely on a tree graphic.
+
+```{r}
+
+# Number of taxa in dataset
+
+ntaxa(GlobalPatterns)
+
+```
+
+Let's arbitarily prune to the first 50 OTUs in the dataset and store.
+
+```{r}
+
+# Prune to first 50 OTUs
+
+physeq <- prune_taxa(taxa_names(GlobalPatterns)[1:50], GlobalPatterns)
+
+
+```
+
+If we just use the default `plot_tree` setting, look at what we get with this pruned tree.
+
+```{r}
+
+# Plot the tree
+
+plot_tree(physeq)
+
+```
+
+Kind of ugly. We can do beter.
+
+The black dots next to the tips are one for each sample in which that OTU was observed. Some have more dots than others. The node labels are also next to the tips, making everything pretty messy. How can we clean this up?
+
+First a tree with labels only.
+
+```{r}
+
+# Plot tree, no points
+
+plot_tree(physeq, "treeonly")
+
+```
+
+What about without the labels?
+
+```{r}
+
+# Plot with no points and no labels
+
+plot_tree(physeq, "treeonly", nodeplotblank)
+
+```
+
+We can adjust the way the branches are rotated to improve the looks using the `ladderize` parameter.
+
+```{r}
+
+# Ladderize the tree above
+
+plot_tree(physeq, "treeonly", nodeplotblank, ladderize="left")
+plot_tree(physeq, "treeonly", nodeplotblank, ladderize = TRUE)
+
+```
+
+Now let's add the OTU labels back to the tips?
+
+```{r}
+
+# Add tip labels back to tree above
+
+plot_tree(physeq, nodelabf=nodeplotblank, label.tips="taxa_names", ladderize="left")
+
+```
+
+Whoa, we also added back the points. Let's take those away.
+
+```{r}
+
+# Tree above with labels, without points
+
+plot_tree(physeq, "anythingelse")
+
+```
+
+
+### Mapping Variables in Data
+
+For the default argument to the method parameter, "sampledodge", a point is added next to each OTU tip for every sample in which that OTU was observed. Now we can add aesthetics to these points.
+
+#### Add Color
+
+Let's map color to the type of sample collected (location)
+
+```{r}
+
+# Map color to type of sample collected
+
+plot_tree(physeq, nodelabf = nodeplotboot(), ladderize = "left", color = "SampleType")
+
+```
+
+Or we can color according to the taxonomic level of Class
+
+```{r}
+
+# Color according to taxonomic Class
+
+plot_tree(physeq, nodelabf = nodeplotboot(), ladderize = "left", color = "Class")
+
+
+```
+
+#### Shape
+
+We can also map to a point shape if the variable has 6 or less categories, even when color is also mapped. Let's add point shape to indicate taxonomic Class while color indicates SampleType.
+
+```{r}
+
+# add shape to points
+
+plot_tree(physeq, nodelabf = nodeplotboot(), ladderize = "left", color = "SampleType", shape = "Class")
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
