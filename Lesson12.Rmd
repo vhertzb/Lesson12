@@ -8,7 +8,33 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
+# Microbial Ecology - The Theory
 
+In ecology, scientists collect quantitative data to determine the resemblance between either the objects under study (objects) or the variables describing them (species or other descriptors). The analysis of the association between objects and descriptors is the first step in the analysis. 
+
+There are three main types of association:
+
+- Similarity
+- Distance
+- Dependence
+
+After creating these measures of association, common tasks are to cluster or to ordinate.
+
+To cluster: Sets of objects (or descriptors) can be partitioned into two or more subsets (clusters) using pre-established rules of agglomeration. 
+
+To ordinate: Objects (or descriptors) are represented in a space containing fewer dimensions than the original dataset such that the positions of the objects (or descriptors) with respect to one another may also be used to cluster them. 
+
+# Microbial Ecology - The Practice
+
+As scientists interested in the microbiome, we are now all microbial ecologists. We typically talk about objects as subjects from whom samples have been taken (or even sites within subjects, e.g., oral, vaginal, rectal) while the descriptors are the list of abundances of each species (or other taxonomic classification) found.
+
+So we become interested in how similar subjects are to each other, say, within group i, and how distant they are from, say, group j. Then we might want to know if that distance is associated with some other difference between the groups, for instance, are groups that are closer together in site pH levels also more similar (i.e., less distant).
+
+Other questions of interest: how do sites (or species) cluster together? Also, can you use a multivariate dimensionality reduction technique to describe differences while preserving distances?
+
+Recall if it is appropriate to determine distances between two points with Euclidean distance, the ensuing multidimensional reduction technique is principal component analysis (PCA). If the data are counts then the distance should be calculated in terms of the $\chi^2$ distance, and then the reduction technique is canonical component analysis (CCA). If the distance metrics take on some other value (e.g., dissimilarity), then principal coordinate analysis (PCoA), which is really PCA of the squared distance matrix.  
+
+These are the types of questions that we can use `phyloseq` to address with our OTUtables and our sample data.
 
 # Beyond the OTU Table
 
@@ -34,6 +60,8 @@ library(phyloseq)
 packageVersion("phyloseq")
 library(ggplot2) 
 packageVersion("ggplot2")
+library(RColorBrewer)
+packageVersion("RColorBrewer")
 
 ```
 
@@ -407,4 +435,569 @@ plot_bar(gpsfb, "SampleType", "Abundance", "Family", title = title)
 plot_bar(gpsfb, "Family", "Abundance", "Family", title = title, facet_grid = "SampleType~.")
 
 ```
+
+You can also define your own graphics "from scratch" using  `psmelt` Here are two examples:
+
+```{r}
+
+# Example 1
+mdf <- psmelt(gpsfb)
+# Simple bar plot
+
+ggplot(mdf, aes(x=SampleType,
+                y=Abundance)) +
+  geom_bar(stat="identity", position = "stack", color="black")
+
+# Simple heat map
+
+ggplot(mdf, aes(x=SampleType,
+                y=OTU,
+                fill=Abundance)) +
+  geom_raster()
+
+```
+
+
+## Distance Functions
+
+The `distance` function takes a `phyloseq` object and a method and returns a `dist`-class distance object. Currently `phyloseq` supports 44 different method options. For the complete list, type `distanceMethodList`. Use the documentation on `distance` for further details.
+
+The usage is as follows:
+
+distance(phyloseq-object, method="methodname", type="type")
+
+Because this function organizes distance calculations into one function, it is easy to calculate all distance methods and investigate the results. We are going to do so on the `Enterotypes` dataset, then perform multidimensional scaling, plot the first two axes, shading and shaping the points in each plot according to sequencing technology and assigned "Enterotype" label.
+
+First some preliminaries, loading `plyr`, setting the `ggplot2` theme, and loading the dataset:
+
+```{r}
+
+# get plyr
+library(plyr)
+
+# set ggplot2 theme
+theme_set(theme_bw())
+
+# load enterotype data
+data(enterotype)
+
+```
+
+Some preliminary filtering to remove OTUs that have unassigned sequences ("-1"):
+
+```{r}
+
+# Remove unassigned OTUs
+
+enterotype <- subset_taxa(enterotype, Genus != "-1")
+
+```
+
+Let's see the available distance methods coded in `distance`:
+
+```{r}
+
+dist_methods <- unlist(distanceMethodList)
+print(dist_methods)
+
+```
+
+Remove distance methods that depend on a phylogenetic tree, because the `enterotype` object that we started with does not have one. These would be the two unifrac methods and DPCoA.
+
+```{r}
+
+# Remove methods that need a phylogenetic tree
+
+dist_methods[(1:3)]
+dist_methods <- dist_methods[-(1:3)]
+print(dist_methods)
+
+# This is the unser-defined method:
+
+dist_methods["designdist"]
+
+# Remove it
+
+dist_methods <- dist_methods[-which(dist_methods == "ANY")]
+print(dist_methods)
+
+```
+
+Now we can loop through this list, calculate distances according to each methods, plot the distances, and save each plot to a plist (`plist`).
+
+```{r}
+
+# Prepare to receive plots
+plist <- vector("list", length(dist_methods))
+names(plist) <- dist_methods
+
+for(i in dist_methods ){
+  # Calculate distance matrix
+  iDist <- distance(enterotype, method=i)
+  #Calculate ordination
+  iMDS <- ordinate(enterotype, "MDS", distance = iDist)
+  ## Make plot
+  # Don't carry over previous plot (if errror, p will be blank)
+  p <- NULL
+  # Create plot, store as temp variable p
+  p <- plot_ordination(enterotype, iMDS, color="SeqTech", shape="Enterotype")
+  # Add title to each plot
+  p <- p + ggtitle(paste("MDS using distance method ", i, sep=""))
+  # Save the graphic to file
+  plist[[i]] <- p
+}
+
+
+```
+
+## Combine Results
+
+Shade according to sequencing technology:
+
+```{r}
+# Shade according to sequencing technology:
+
+df <- ldply(plist, function(x) x$data)
+names(df)[1] <- "distance"
+p <- ggplot(df, aes(Axis.1, Axis.2, color=SeqTech, shape=Enterotype))
+p <- p + geom_point(size = 3, alpha = 0.5)
+p <- p + facet_wrap(~distance, scales="free")
+p <- p + ggtitle("MDS on various distance metrics for Enterotype dataset")
+p
+```
+
+Now, shade instead according to assigned Enterotype
+
+```{r}
+
+# Shade according to Enterotype:
+
+df <- ldply(plist, function(x) x$data)
+names(df)[1] <- "distance"
+p <- ggplot(df, aes(Axis.1, Axis.2, color=Enterotype, shape=SeqTech))
+p <- p + geom_point(size = 3, alpha = 0.5)
+p <- p + facet_wrap(~distance, scales="free")
+p <- p + ggtitle("MDS on various distance metrics for Enterotype dataset")
+p
+
+```
+
+### Compare Results
+
+Some selected examples among the created plots. First the Jensen-Shannon Divergence.
+
+```{r}
+
+# Plot ordination with Jensen-Shannon Divergence
+
+print(plist[["jsd"]])
+
+```
+
+Jaccard distance
+
+```{r}
+
+# Plot ordination with Jaccard distance
+
+print(plist[["jaccard"]])
+
+```
+
+Bray-Curtis
+
+```{r}
+# Plot ordination with Bray-Curtis
+
+print(plist[["bray"]])
+```
+
+Gower
+
+```{r}
+
+# Plot ordination with Gower
+
+print(plist[["gower"]])
+
+```
+
+
+w
+
+```{r}
+
+# Plot ordination with w
+
+print(plist[["w"]])
+
+```
+
+
+## Gap Statistic
+
+### How Many Clusters Are There?
+
+The `clusGap` function from the `cluster` package calculates a goodness of clustering measure, the "gap" statistic. For each number of clusters `k`, it compares W(k) with $E[W(k)]$ where the latter is defined by bootstrapping.
+
+Let's give this a try:
+
+#### First: Ordination
+
+Well, really, first, let's set things up, then ordinate:
+
+```{r}
+
+# Set up
+
+library(cluster)
+packageVersion("cluster")
+theme_set(theme_bw())
+data(enterotype)
+
+# Now ordinate
+exord <- ordinate(enterotype, method = "MDS", distance = "jsd")
+
+```
+
+#### Compute Gap Statistic
+
+```{r}
+
+# Compute gap statistic
+
+paml = function(x, k){list(cluster=pam(x,k, cluster.only = TRUE))}
+x = phyloseq:::scores.pcoa(exord, distplay="sites")
+gskmn = clusGap(x[,1:2], FUN=paml, K.max = 6, B=50)
+gskmn
+
+```
+
+#### Plot Results
+
+Define a plot method for results
+
+```{r}
+
+# Define plot method
+
+plot_glusgap <- function(clusgap, title="Gap Statistic calculation results"){
+  require("ggplot2")
+  gstab <- data.frame(clusgap$Tab, k=1:nrow(clusgap$Tab))
+  p <- ggplot(gstab, aes(k, gap)) + geom_line() + geom_point(size=5)
+  p <- p + geom_errorbar(aes(ymax = gap+SE.sim, ymin = gap - SE.sim))
+  p <- p + ggtitle(title)
+  return(p)
+}
+
+# Define a wrapper function
+
+gap_statistic_ordination <- function(ord, FUNcluster, type="sites", K.max=6, axes=c(1:2), B=500, verbose=interactive(), ...){
+    require("cluster")
+    #   If "paml" was chosen, use this internally defined call to pam
+    if(FUNcluster == "paml"){
+        FUNcluster = function(x,k) list(cluster = pam(x, k, cluster.only=TRUE))     
+    }
+    # Use the scores function to get the ordination coordinates
+    x = phyloseq:::scores.pcoa(ord, display=type)
+    #   If axes not explicitly defined (NULL), then use all of them
+    if(is.null(axes)){axes = 1:ncol(x)}
+    #   Finally, perform, and return, the gap statistic calculation using cluster::clusGap  
+    clusGap(x[, axes], FUN=FUNcluster, K.max=K.max, B=B, verbose=verbose, ...)
+}
+
+
+```
+
+Now try out this function
+
+```{r}
+# Make the plot
+
+gs <- gap_statistic_ordination(exord, "paml", B=50, verbose = FALSE)
+print(gs, method="Tibs2001SEmax")
+plot_clusgap(gs)
+
+```
+
+For comparison, let's see what happens if we only use plotting as available in `base` R:
+
+```{r}
+
+# Base R plotting
+
+plot(gs, main = "Gap statistic for the 'Enterotypes' data")
+mtext("Looks like 4 clusters is best, with 3 and 5 as close runners-up")
+
+```
+
+
+## Ordination Plots
+
+We want to filter low-occurrence, poorly-represented OTUs from these data, because they are essentially noise variables for purposes of this lesson. In practice, you should probably perform clearly-document well-justified pre-processing steps.
+
+First we want to remove OTUs that do not appear more than 5 times in more than half the samples.
+
+```{r}
+
+# Remove OTUs that don't appear more than 5 times in more than half the samples
+
+GP <- GlobalPatterns
+wh0 <- genefilter_sample(GP, filterfun_sample(function(x) x>5), A = 0.5*nsamples(GP))
+GP1 <- prune_taxa(wh0, GP)
+
+```
+
+Transform to an even sampling depth.
+
+```{r}
+
+# Transform to an even sampling depth
+
+GP1 <- transform_sample_counts(GP1, function(x) 1e6 * x/sum(x))
+
+```
+
+Keep only the 5 most abundant phyla.
+
+```{r}
+
+# Keep the top 5 most abundant phyla  
+
+phylum.sum <- tapply(taxa_sums(GP1), tax_table(GP1)[, "Phylum"], sum, na.rm = TRUE)
+top5phyla <- names(sort(phylum.sum, TRUE))[1:5]
+GP1 <- prune_taxa((tax_table(GP1)[, "Phylum"] %in% top5phyla), GP1)
+summary(GP1)
+GP1
+
+
+```
+
+So we still have 204 taxa that are in the dataset `GP1` that we will use going forward.
+
+We will want to investigate human-associated microbiomes vs not, so we will define as follows:
+
+```{r}
+
+# Define human-associate samples
+human <- get_variable(GP1, "SampleType") %in% c("Feces", "Mock", "Skin", "Tongue")
+sample_data(GP1)$human <- factor(human)
+
+```
+
+### Four Main Types of Ordination Plots
+
+There are four basic representations of an ordination. 
+
+#### Just OTUs
+
+Let's plot just the OTUs and shade by Phylum. Remember there will `ntaxa(GP1)` = 204 OTUs in this plot.
+
+```{r}
+
+# Plot ordination for just OTUs
+
+GP.ord <- ordinate(GP1, "NMDS", "bray")
+p1 <- plot_ordination(GP1, GP.ord, type="taxa", color="Phylum", title = "taxa")
+print(p1)
+
+```
+
+There is a lot going on here, and a lot of points are superimposed on one another. One way to deal with that is to use facetting.
+
+```{r}
+
+# Facet-wrapping for previous plot
+
+p1 + facet_wrap(~Phylum, 3)
+
+```
+
+#### Just Samples
+
+Another way to plot is to consider the samples, and shade by "SampleType", modifying shape according to if they are human associated.
+
+```{r}
+
+# Plot just the Samples
+
+p2 <- plot_ordination(GP1, GP.ord, type="samples", color="SampleType", shape="human")
+p2 + geom_polygon(aes(fill=SampleType)) +
+  geom_point(size=5) +
+  ggtitle("samples")
+
+
+```
+
+#### Biplot Graphic of OTUs and Samples Together
+
+The `plot_ordination` function can also automatically create two different graphic layouts in which both the sampels and OTUs are plotted together in one "biplot". This will not work for methods that are intrinsically samples-only ordinations (e.g., UniFrac/PCoA).
+
+```{r}
+
+# Biplot Graph
+
+p3 <- plot_ordination(GP1, GP.ord, type="biplot", color="SampleType", shape="Phylum", title = "biplot")
+ # The following will modify the automatic shape scale
+GP1.shape.names <- get_taxa_unique(GP1, "Phylum")
+GP1.shapes <- 15:(15 + length(GP1.shape.names) - 1)
+names(GP1.shapes) <- GP1.shape.names
+GP1.shapes["samples"] <- 16
+
+p3 + scale_shape_manual(values=GP1.shapes)
+
+```
+
+#### Split Graphic
+
+We have the same problem as before, with a lot of overlay that might obscure meanint. Let's try to separate into side-by-side panels.
+
+```{r}
+
+# Split graphic into panels
+
+p4 <- plot_ordination(GP1, GP.ord, type="split", color="Phylum", shape = "human", label = "SampleType", title = "split")
+p4
+
+```
+
+
+### Ordination Methods
+
+Now we are going o loop through different `method` parameter options to the `plot_ordination` function, store the plot results, then plot in a combined graphic.
+
+```{r}
+
+# First use different ordination methods and plot to list
+
+dist <- "bray"
+ord_meths <- c("DCA", "CCA", "RDA", "DPCoA", "NMDS", "MDS", "PCoA")
+plist <- llply(as.list(ord_meths), function(i, physeq, dist){
+  ordi <- ordinate(physeq, method=i, distance = dist)
+  plot_ordination(physeq, ordi, "samples", color="SampleType")
+}, GP1, dist)
+names(plist) <- ord_meths
+
+```
+
+Now we will extract the data from each of the individual plots and put them back together in one big data.frame suitable for including all plots in one graphic.
+```{r}
+
+# Extract data from each of the individual plots and put them all together in one big dataframe
+
+pdataframe <- ldply(plist, function(x){
+  df <- x$data[, 1:2]
+  colnames(df) <- c("Axis_1", "Axis_2")
+  return(cbind(df, x$data))
+})
+
+names(pdataframe)[1] <- "method"
+
+```
+
+Now with all ordination results combined in one dataframe, called `pdataframe`, we can make a standard faceted scatterplot with ggplot2.
+
+```{r}
+
+# Make faceted scatterplot
+
+p <- ggplot(pdataframe, aes(Axis_1, Axis_2, color = SampleType, shape=human, fill=SampleType))
+p <- p + geom_point(size=4) +
+          geom_polygon()
+p <- p + facet_wrap(~method, scales="free")
+p <- p + scale_fill_brewer(type="qual", palette = "Set1")
+p <- p + scale_colour_brewer(type="qual", palette = "Set1")
+p
+
+
+```
+
+If you want t larger version of an individual plot, print from the original `plist` from which the `pdataframe` was mde. For instance plot the detrended correspondence analysis (DCA), which is the second element of the list.
+
+```{r}
+
+# Print DCA from original plist
+
+
+plist[[2]]
+```
+
+Make it look nicer.
+
+```{r}
+
+#Fluff it up
+
+p <- plist[[2]] + scale_colour_brewer(type="qual", palette = "Set1")
+p <- p + scale_fill_brewer(type="qual", palette = "Set1")
+p <- p + geom_point(size = 5) +
+         geom_polygon(aes(fill=SampleType))
+p
+
+```
+
+#### PCoA on UniFrac Distances
+
+You can also do PCoA on UniFrac distances
+
+Use the `ordinate` function to perform weighted UniFrac then perform PCoA on the distance matrix. Then pass the data and the ordination results to `plot_ordination` to create the `ggplot2` graphic withe default settings.
+
+```{r}
+
+# get unifrac distances and pcoa them
+
+ordu <- ordinate(GP1, "PCoA", "unifrac", weighted=TRUE)
+
+# plot it
+
+plot_ordination(GP1, ordu, color="SampleType", shape = "human")
+
+```
+
+Let's pretty it up.
+
+```{r}
+
+# Fluff up the graph
+
+p <- plot_ordination(GP1, ordu, color="SampleType", shape="human")
+p <- p + geom_point(size=7) 
+p <- p + scale_colour_brewer(type="qual", palette = "Set1")
+p + ggtitle("MDS/PCoA on weighted UniFrac distance, Global Patterns dataset")
+
+```
+
+## Alpha Diversity Graphics
+
+Although the command is to the `plot_richness` function, the function in fact calculates to more than to richness, in fact to all descriptions of alpha diversity. 
+
+First some setup
+
+```{r}
+
+# Some setup for graphics
+
+theme_set(theme_bw())
+pal <- "Set1"
+scale_colour_discrete <-  function(palname=pal, ...){
+  scale_colour_brewer(palette=palname, ...)
+}
+scale_fill_discrete <-  function(palname=pal, ...){
+  scale_fill_brewer(palette=palname, ...)
+}
+
+
+```
+
+
+### Prepare the Data
+
+It is probably not a bad idea to prune OTUs that are not present in any of the samples (somehow that happens) but _don't trim more than that!_ Many richness estimates are modeled on singletons and doubletons, and you need to leave them in the dataset to get meaningful estimates.
+
+
+
+
+
+
+
 
