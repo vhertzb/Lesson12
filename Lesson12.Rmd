@@ -1237,14 +1237,477 @@ plot_tree(physeq, nodelabf = nodeplotboot(), ladderize = "left", color = "Sample
 
 ```
 
+### Radial Tree 
+
+Making a radial tree is surprisingly easy with `ggplot2`, as long as you remember that our vertically oriented tree is a cartesian mapping of the data to a graphic. A radial tree is the same mapping, but with polar, instead of cartesian, coordinates. To wit
+
+```{r}
+# Make radial phylogenetic tree for esophagus dataset
+
+data (esophagus)
+plot_tree(esophagus, color = "Sample", ladderize = "left") + coord_polar(theta = "y")
 
 
+```
 
+We can make a more elaborate tree with the GlobalPatterns dataset, but will need to do some preliminary loading and trimming.
 
+```{r}
 
+# Make radial tree for GlobalPatterns
 
+plot_tree(physeq, nodelabf = nodeplotboot(60, 60, 3), color = "SampleType", shape = "Class", ladderize = "left") + coord_polar(theta = "y")
 
+```
 
+#### More Examples with the Esophagus Dataset 
+
+The Esophagus dataset is really simple - just 3 samples, no sample data, and a modest amount of sequencing per sample. 
+
+Let's look at the default tree
+
+```{r}
+
+# Default tree for Esophagus dataset
+
+plot_tree(esophagus, title="Default Tree.")
+
+```
+
+If you want an unadorned tree, the `treeonly` method can be used. 
+
+```{r}
+
+# Simplest tree
+
+plot_tree(esophagus, "treeonly", title="method = \"treeonly\"")
+
+```
+
+Shading tips where OTUs are observed:
+
+```{r}
+
+# Shade tips where OTUs are observed
+
+plot_tree(esophagus, color="samples")
+
+```
+
+Scale the tips according to abundance.
+
+```{r}
+
+# Scale tips by abundance
+
+plot_tree(esophagus, size="abundance")
+
+```
+
+Color and scale on the same tree!
+
+```{r}
+
+# Shade tips where OTUs are observed
+
+plot_tree(esophagus, color="samples", size = "abundance")
+
+```
+
+Oh my!
+
+There is some overlap of tip points. Let's see if we can adjust spacing to spread them out a bit.
+
+```{r}
+
+# Shade tips where OTUs are observed
+
+plot_tree(esophagus, color="samples", size = "abundance", base.spacing = 0.03)
+
+```
+
+Can we display the actual numeric value of abundances that occurred 3 or more times in a sample?
+
+```{r}
+
+# Shade tips where OTUs are observed
+
+plot_tree(esophagus, color="samples", size = "abundance", base.spacing = 0.03, min.abundance = 3)
+
+```
+
+#### More Examples with GlobalPatterns Dataset
+
+Let's subset the GlobalPatterns dataset to just the observed Archaea.
+
+```{r}
+
+# Subset GlobalPatterns to just Archaea
+
+gpa <- subset_taxa(GlobalPatterns, Kingdom == "Archaea")
+ntaxa(gpa)
+
+```
+
+The number of taxa is small enough for a decent tree plot.
+
+Too many OTUs means a tree that is pointless to displa in its entirety in one graphic of a standard size and font. So the whole GlobalPatterns dataset is probably a bad idea.
+
+```{r}
+# Number of taxa in GlobalPatterns dataset
+
+ntaxa(GlobalPatterns)
+```
+
+Let's look at the basic tree with just a minimal set of parameter choices.
+
+```{r}
+
+# Almost minimal trees for GlobalPatterns Archaea subset
+
+plot_tree(gpa, color = "SampleType")
+plot_tree(gpa, color = "Phylum")
+plot_tree(gpa, color = "SampleType", shape = "Phylum")
+plot_tree(gpa, color = "Phylum", label.tips = "Genus")
+
+```
+
+These ~200 taxa still make for a crowded graphic. So let's subset further to just the Crenarcheota.
+
+```{r}
+
+# Trees for just Crenarchaeota
+
+gpac <- subset_taxa(gpa, Phylum=="Crenarchaeota")
+plot_tree(gpac, color="SampleType", shape="Genus")
+plot_tree(gpac, color = "SampleType", label.tips = "Genus")
+
+```
+
+Add some abundance information, then spread it out:
+
+```{r}
+
+# Add abundance inforamtion then spread it out
+
+plot_tree(gpac, color="SampleType", shape="Genus", size="abundance", plot.margin=0.4)
+plot_tree(gpac, nodelabf=nodeplotblank, color="SampleType", shape="Genus", size="abundance", base.spacing=0.04, plot.margin=0.4)
+
+```
+
+#### Chlamydiae-only Tree
+
+Let's use some of these same techniquest with the Chlamydiae-only tree that we had created earlier.
+
+```{r}
+
+# Create Chlamydiae-only tree and plot again
+
+gp.ch <- subset_taxa(GlobalPatterns, Phylum=="Chlamydiae")
+plot_tree(gp.ch, color="SampleType", shape="Family", label.tips="Genus", size="abundance", plot.margin=0.6)
+
+```
+
+## Bar Plots
+
+Let's start again with the Chlamydiae-only subset of GlobalPatterns, and look at the basic bar plot.
+
+```{r}
+
+# Basic plots with Chlamydiae subset
+
+plot_bar(gp.ch)
+
+```
+
+Add some fill color to represent the Genus to which the OTUs belong
+
+```{r}
+
+# Add fill color for Genus to basic bar plot
+
+plot_bar(gp.ch, fill = "Genus")
+
+```
+
+Keep same fill color, but group by SampleType.
+
+```{r}
+
+# Add fill color for Genus to basic bar plot
+
+plot_bar(gp.ch, fill = "Genus", x = "SampleType")
+
+```
+
+### Jazz It Up with Facets
+
+Organize further with facets, graphing the Families faceted by SampleType and filled by Genus.
+
+```{r}
+
+# Add fill color for Genus to basic bar plot
+
+plot_bar(gp.ch, "Family", fill = "Genus", facet_grid = ~SampleType)
+
+```
+
+Even fancier by adding a layer of jittered points.
+
+```{r}
+
+# Add a layer of jittered points
+
+p = plot_bar(gp.ch, "Family", fill="Genus", facet_grid=~SampleType)
+p + geom_point(aes(x=Family, y=Abundance), color="black", position="jitter", size=3)
+
+```
+
+### Enterotype Dataset
+
+Let's first trim to the 10 most abundant genera.
+
+```{r}
+
+TopNOTUs <- names(sort(taxa_sums(enterotype), TRUE)[1:10])
+ent10   <- prune_taxa(TopNOTUs, enterotype)
+
+```
+
+The settings in the following R-chunk were chosen after trial-and-error, looking to show off certain features of the data to the best advantage.
+
+```{r}
+
+# Bar graph for Enterotype to look at sequencing technology v genus detection
+
+plot_bar(ent10, "SeqTech", fill="Enterotype", facet_grid = ~Genus)
+
+```
+
+You could of course opt instead to separate enterotype designation and genus designation:
+
+```{r}
+
+# Separate into finer grid
+
+plot_bar(ent10, "Genus", fill="Genus", facet_grid = SeqTech~Enterotype)
+
+```
+
+We can remove those OTU separation lines as follows:
+
+```{r}
+
+# Separate into finer grid
+
+p <- plot_bar(ent10, "Genus", fill="Genus", facet_grid = SeqTech~Enterotype)
+p + geom_bar(aes(color=Genus, fill=Genus), stat="identity", position="stack")
+
+```
+
+## Heatmap Plots
+
+You can also create heatmaps using ordination methods to organize rows and columns instead of hierarchical clustering. Such an organization typically makes a more interpretable display. Lucky for us we can do all of this within `phyloseq`!
+
+Traditionally heatmaps have been used to emphasize data that is above or below a threshold as "hot" or "cold" respectively. But when used with OTU abundance data, the need is to see the relative patterns of high abundance OTUs against a background of low abundance or absent groups. Thus the default color scheme is dark blue (low abundance) to very light blue for highest abundance, with black representing missing or zero abundance values. Thus you can change the color scheme by changing the `low`, `high`, and `na.value` arguments. 
+
+### Plot a 300-taxa Dataset
+
+et's get the top 300 most abundant Bacteria taxa across all samples in the GlobalPatterns dataset and plot a heatmap. Quick and dirty.
+
+```{r}
+
+# Get top 300 most abundant Bacteria taxa in GlobalPatterns
+
+gpt <- subset_taxa(GlobalPatterns, Kingdom=="Bacteria")
+gpt <- prune_taxa(names(sort(taxa_sums(gpt),TRUE)[1:300]), gpt)
+
+# Plot the heatmap
+
+plot_heatmap(gpt, sample.label="SampleType")
+
+```
+
+This is kind of noisy. Let's deal with something a bit more manageable, like the Crenarchaeota phylum of Archaea, which we created above as gpac. Now the default heatmap
+
+```{r}
+
+# Default heatmap for Crenarchaeota
+
+plot_heatmap(gpac)
+
+```
+
+Re-label by a sample variable and taxonomic family.
+
+```{r}
+
+# Re-label and SampleType and Family
+
+p <- plot_heatmap(gpac, "NMDS", "bray", "SampleType", "Family")
+p
+
+```
+
+And if you wanted axis lables but not hte labels on individual features?
+
+```{r}
+
+# Relabel
+
+p$scales$scales[[1]]$name <- "My X-Axis"
+p$scales$scales[[2]]$name <- "My Y-Axis"
+print(p)
+
+```
+
+How about a different color scheme?
+
+```{r}
+
+plot_heatmap(gpac, "NMDS", "bray", "SampleType", "Family", low="#000033", high="#CCFF66")
+
+```
+
+Or a very dark blue to red scheme:
+
+```{r}
+
+plot_heatmap(gpac, "NMDS", "bray", "SampleType", "Family", low="#000033", high="#FF3300")
+
+```
+
+Dark blue to light blue:
+
+```{r}
+
+plot_heatmap(gpac, "NMDS", "bray", "SampleType", "Family", low="#000033", high="#66CCFF")
+
+```
+
+Here is a "dark on light" color scheme, with the white value for NA and 0 elements.
+
+```{r}
+
+plot_heatmap(gpac, "NMDS", "bray", "SampleType", "Family", low="#66CCFF", high="#000033", na.value = "white")
+
+```
+
+A somewhat similar color scheme to that above, but now the "near-zero" color is close to a cream color and the colors themselves closer to grey. Better contrast overall, but more subtle in a way, not as exciting.
+
+```{r}
+
+plot_heatmap(gpac, "NMDS", "bray", "SampleType", "Family", low="#FFFFCC", high="#000033", na.value = "white")
+
+```
+
+Now let's try with different distances, different ordination methods
+
+First the default heatmap with NMDS ordination on the jaccard distance.
+
+```{r}
+
+plot_heatmap(gpac, "NMDS", "jaccard")
+
+```
+
+Detrended correspondence analysis.
+
+```{r}
+
+plot_heatmap(gpac, "DCA", "none", "SampleType", "Family")
+
+```
+
+Unconstrained redundancy analysis (PCA by any other name)
+
+```{r}
+
+plot_heatmap(gpac, "RDA", "none", "SampleType", "Family")
+
+```
+
+PCoA/MDS on the (default) Bray-Curtis distance.
+
+```{r}
+
+plot_heatmap(gpac, "PCoA", "bray", "SampleType", "Family")
+
+```
+
+PCoA/MDS on unweighted UniFrac distance
+
+```{r}
+
+plot_heatmap(gpac, "PCoA", "unifrac", "SampleType", "Family")
+
+```
+
+Same as above but with weighted UniFrac.
+
+```{r}
+
+plot_heatmap(gpac, "PCoA", "unifrac", "SampleType", "Family", weighted=TRUE)
+
+```
+
+And finally, just the regular heatmap produced by base-R graphics with a hierarchical clustering. Just in case you wanted to compare with `plot_heatmap`. Because I know you want to.
+
+```{r}
+
+heatmap(otu_table(gpac))
+
+```
+
+## Plot Microbiome Network
+
+There is a random element to network layout methods. So we want this to be reproducible, so we will set the random number generator seed explicitly:
+
+```{r}
+
+# Set the seed
+
+set.seed(711L)
+
+```
+
+We are going to work first with the Enterotype dataset. We will first want to remove the 9 samples for which no enterotype designation was assigned. 
+
+```{r}
+
+# Remove samples with no enterotype designation
+
+enterotype <- subset_samples(enterotype, !is.na(Enterotype))
+
+```
+
+We are going to create a network of samples in this dataset, connecting two samples when a distance between them is below some threshold. 
+
+Let's plot first with the default settings.
+
+```{r}
+
+# Default microbiome network plot
+
+plot_net(enterotype, maxdist = 0.4, point_label="Sample_ID")
+
+```
+
+What do you notice here, other than a big mess?
+
+Well there are two subgraphs that make up the majority of samples.
+
+Let's use some color to see about aspects of the network.
+
+```{r}
+
+# Exercise some options
+
+plot_net(enterotype, maxdist = 0.3, color="SeqTech", shape="Enterotype")
+
+```
+
+What do you notice now?
 
 
 
