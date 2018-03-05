@@ -8,6 +8,11 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
+
+# Housekeeping First
+
+1. In my Lesson 12 repo, I 
+
 # Microbial Ecology - The Theory
 
 In ecology, scientists collect quantitative data to determine the resemblance between either the objects under study (objects) or the variables describing them (species or other descriptors). The analysis of the association between objects and descriptors is the first step in the analysis. 
